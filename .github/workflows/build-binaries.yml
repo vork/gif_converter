@@ -1,15 +1,10 @@
 name: Build & Package App
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:        # manual trigger (builds only, no release)
   push:
-    paths:
-      - '.github/workflows/build-binaries.yml'
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - 'macos/**'
-      - 'linux/**'
-      - 'windows/**'
+    tags:
+      - 'v*'               # tag push → build + create GitHub Release
 
 # ──────────────────────────────────────────────────────────────────────
 # Pinned versions — update these when upgrading
@@ -399,3 +394,97 @@ jobs:
         with:
           name: app-windows-x86_64
           path: GifDrop-windows-x86_64.zip
+
+  # ════════════════════════════════════════════════════════════════════
+  # Create GitHub Release (only on tag push)
+  # ════════════════════════════════════════════════════════════════════
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Download all artifacts ───────────────────────────────────
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # ── Collect release assets ───────────────────────────────────
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # App bundles
+          cp artifacts/app-macos-arm64/GifDrop-macos-arm64.zip         release-assets/
+          cp artifacts/app-linux-x86_64/GifDrop-linux-x86_64.tar.gz    release-assets/
+          cp artifacts/app-windows-x86_64/GifDrop-windows-x86_64.zip   release-assets/
+
+          # Standalone binaries (for manual bundling)
+          for platform in macos-arm64 linux-x86_64 windows-x86_64; do
+            dir="artifacts/binaries-${platform}"
+            if [ -d "$dir" ]; then
+              tar czf "release-assets/binaries-${platform}.tar.gz" -C "$dir" .
+            fi
+          done
+
+          # GPL compliance: gifsicle source (pick one, they're identical)
+          SOURCE_ARCHIVE=$(find artifacts -name 'gifsicle-*-source.tar.gz' | head -1)
+          if [ -n "$SOURCE_ARCHIVE" ]; then
+            cp "$SOURCE_ARCHIVE" release-assets/gifsicle-${GIFSICLE_VERSION}-source.tar.gz
+          fi
+
+          # Combined checksums
+          echo "# Binary checksums per platform" > release-assets/checksums.sha256
+          for dir in artifacts/binaries-*/; do
+            platform=$(basename "$dir")
+            if [ -f "${dir}checksums.sha256" ]; then
+              echo "" >> release-assets/checksums.sha256
+              echo "## ${platform}" >> release-assets/checksums.sha256
+              cat "${dir}checksums.sha256" >> release-assets/checksums.sha256
+            fi
+          done
+
+          # App archive checksums
+          echo "" >> release-assets/checksums.sha256
+          echo "## App archives" >> release-assets/checksums.sha256
+          cd release-assets
+          sha256sum GifDrop-*.zip GifDrop-*.tar.gz >> checksums.sha256 2>/dev/null || true
+          cat checksums.sha256
+
+          ls -la
+
+      # ── Create release ───────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Downloads
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `GifDrop-macos-arm64.zip` |
+            | Linux (x86_64) | `GifDrop-linux-x86_64.tar.gz` |
+            | Windows (x86_64) | `GifDrop-windows-x86_64.zip` |
+
+            ### Bundled binary versions
+            - **ffmpeg** ${{ env.FFMPEG_VERSION }} (LGPL 2.1+, built from source)
+            - **gifsicle** ${{ env.GIFSICLE_VERSION }} (GPL 2, source included as `gifsicle-${{ env.GIFSICLE_VERSION }}-source.tar.gz`)
+
+            ### Verification
+            All checksums are in `checksums.sha256`. Verify after download:
+            ```
+            sha256sum -c checksums.sha256
+            ```
+          files: |
+            release-assets/GifDrop-macos-arm64.zip
+            release-assets/GifDrop-linux-x86_64.tar.gz
+            release-assets/GifDrop-windows-x86_64.zip
+            release-assets/binaries-macos-arm64.tar.gz
+            release-assets/binaries-linux-x86_64.tar.gz
+            release-assets/binaries-windows-x86_64.tar.gz
+            release-assets/gifsicle-${{ env.GIFSICLE_VERSION }}-source.tar.gz
+            release-assets/checksums.sha256
