@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/conversion_settings.dart';
@@ -19,6 +20,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
   final List<ConversionJob> _jobs = [];
   ConversionSettings _settings = const ConversionSettings();
   bool _isConverting = false;
+  Completer<void>? _cancelCompleter;
   int? _previewIndex;
   final _ffmpegService = FfmpegService();
 
@@ -50,8 +52,14 @@ class _ConverterScreenState extends State<ConverterScreen> {
     });
   }
 
+  void _cancelConversion() {
+    _cancelCompleter?.complete();
+  }
+
   Future<void> _startConversion() async {
     if (_jobs.isEmpty || _isConverting) return;
+
+    _cancelCompleter = Completer<void>();
 
     setState(() {
       _isConverting = true;
@@ -82,6 +90,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
           inputPath: job.inputPath,
           settings: _settings,
           onProgress: (progress, status) {
+            if (!mounted) return;
             setState(() {
               job.progress = progress;
               job.statusText = status;
@@ -90,8 +99,10 @@ class _ConverterScreenState extends State<ConverterScreen> {
               }
             });
           },
+          cancelSignal: _cancelCompleter!.future,
         );
 
+        if (!mounted) return;
         final outputFile = File(outputPath);
         setState(() {
           job.status = ConversionJobStatus.done;
@@ -100,7 +111,16 @@ class _ConverterScreenState extends State<ConverterScreen> {
           job.outputFileSize = outputFile.lengthSync();
           job.statusText = 'Done';
         });
+      } on ConversionCancelledException {
+        if (!mounted) return;
+        setState(() {
+          job.status = ConversionJobStatus.error;
+          job.errorMessage = 'Cancelled';
+          job.statusText = 'Cancelled';
+        });
+        break;
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           job.status = ConversionJobStatus.error;
           job.errorMessage = e.toString();
@@ -109,9 +129,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
       }
     }
 
-    setState(() {
-      _isConverting = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isConverting = false;
+        _cancelCompleter = null;
+      });
+    }
   }
 
   int get _pendingCount =>
@@ -126,7 +149,15 @@ class _ConverterScreenState extends State<ConverterScreen> {
         title: const Text('GifDrop'),
         centerTitle: false,
         actions: [
-          if (_jobs.isNotEmpty)
+          if (_jobs.isNotEmpty) ...[
+            if (_isConverting)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: TextButton(
+                  onPressed: _cancelConversion,
+                  child: const Text('Cancel'),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: FilledButton.icon(
@@ -155,6 +186,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                 ),
               ),
             ),
+          ],
         ],
       ),
       body: SingleChildScrollView(

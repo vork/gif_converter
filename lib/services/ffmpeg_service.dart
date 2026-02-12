@@ -5,6 +5,12 @@ import 'package:path/path.dart' as p;
 import 'binary_resolver.dart';
 import '../models/conversion_settings.dart';
 
+/// Thrown when conversion is stopped by user (Cancel).
+class ConversionCancelledException implements Exception {
+  @override
+  String toString() => 'Conversion cancelled';
+}
+
 class FfmpegService {
   String? _ffmpegPath;
   String? _gifsicklePath;
@@ -20,18 +26,17 @@ class FfmpegService {
   }
 
   /// Run a process, drain stderr, and return (exitCode, stderrText).
-  /// Always drain stderr *before* awaiting exitCode to avoid deadlocks.
+  /// If [cancelSignal] completes first, kills the process and throws [ConversionCancelledException].
   Future<(int, String)> _runProcess(
     String executable,
     List<String> args, {
     void Function(String chunk)? onStderr,
+    Future<void>? cancelSignal,
   }) async {
     final process = await Process.start(executable, args);
 
-    // Drain stdout (discard) so the pipe doesn't block.
     process.stdout.drain<void>();
 
-    // Collect stderr and optionally forward chunks to caller.
     final stderrBuf = StringBuffer();
     final stderrDone = process.stderr
         .transform(utf8.decoder)
@@ -41,15 +46,33 @@ class FfmpegService {
         })
         .asFuture<void>();
 
-    // Wait for stderr to fully drain, then await exit.
-    await stderrDone;
-    final exitCode = await process.exitCode;
-    return (exitCode, stderrBuf.toString());
+    int? exitCode;
+    if (cancelSignal != null) {
+      try {
+        await Future.any([
+          (() async {
+            await stderrDone;
+            exitCode = await process.exitCode;
+          })(),
+          cancelSignal.then((_) async {
+            process.kill(ProcessSignal.sigterm);
+            await process.exitCode;
+            throw ConversionCancelledException();
+          }),
+        ]);
+      } on ConversionCancelledException {
+        rethrow;
+      }
+    } else {
+      await stderrDone;
+      exitCode = await process.exitCode;
+    }
+    return (exitCode!, stderrBuf.toString());
   }
 
-  Future<double> getVideoDuration(String inputPath) async {
+  Future<double> getVideoDuration(String inputPath, {Future<void>? cancelSignal}) async {
     final ffmpeg = await ffmpegPath;
-    final (_, stderr) = await _runProcess(ffmpeg, ['-i', inputPath]);
+    final (_, stderr) = await _runProcess(ffmpeg, ['-i', inputPath], cancelSignal: cancelSignal);
 
     final regex = RegExp(r'Duration:\s+(\d+):(\d+):(\d+)\.(\d+)');
     final match = regex.firstMatch(stderr);
@@ -65,8 +88,9 @@ class FfmpegService {
   Future<String> _generatePalette(
     String inputPath,
     ConversionSettings settings,
-    String palettePath,
-  ) async {
+    String palettePath, {
+    Future<void>? cancelSignal,
+  }) async {
     final ffmpeg = await ffmpegPath;
 
     final filters = <String>[];
@@ -83,7 +107,7 @@ class FfmpegService {
       '-y', palettePath,
     ];
 
-    final (exitCode, stderr) = await _runProcess(ffmpeg, args);
+    final (exitCode, stderr) = await _runProcess(ffmpeg, args, cancelSignal: cancelSignal);
     if (exitCode != 0) {
       throw Exception('Palette generation failed (exit $exitCode):\n$stderr');
     }
@@ -96,8 +120,9 @@ class FfmpegService {
     String outputPath,
     ConversionSettings settings,
     double totalDuration,
-    void Function(double progress, String status) onProgress,
-  ) async {
+    void Function(double progress, String status) onProgress, {
+    Future<void>? cancelSignal,
+  }) async {
     final ffmpeg = await ffmpegPath;
 
     final scaleAndFps = <String>[];
@@ -137,7 +162,8 @@ class FfmpegService {
         final progress = (current / totalDuration).clamp(0.0, 1.0);
         onProgress(progress, 'Creating GIF...');
       }
-    });
+    },
+        cancelSignal: cancelSignal);
 
     if (exitCode != 0) {
       throw Exception('GIF creation failed (exit $exitCode):\n$stderr');
@@ -147,8 +173,9 @@ class FfmpegService {
   Future<void> _optimizeWithGifsicle(
     String gifPath,
     ConversionSettings settings,
-    void Function(double progress, String status) onProgress,
-  ) async {
+    void Function(double progress, String status) onProgress, {
+    Future<void>? cancelSignal,
+  }) async {
     final gifsicle = await gifsicklePath;
 
     onProgress(0.0, 'Optimizing with lossy compression...');
@@ -160,7 +187,7 @@ class FfmpegService {
       gifPath,
     ];
 
-    final (exitCode, stderr) = await _runProcess(gifsicle, args);
+    final (exitCode, stderr) = await _runProcess(gifsicle, args, cancelSignal: cancelSignal);
     if (exitCode != 0) {
       throw Exception('Gifsicle optimization failed (exit $exitCode):\n$stderr');
     }
@@ -172,6 +199,7 @@ class FfmpegService {
     required String inputPath,
     required ConversionSettings settings,
     required void Function(double progress, String status) onProgress,
+    Future<void>? cancelSignal,
   }) async {
     final outputDir = p.dirname(inputPath);
     final baseName = p.basenameWithoutExtension(inputPath);
@@ -183,10 +211,10 @@ class FfmpegService {
 
     try {
       onProgress(0.0, 'Analyzing video...');
-      final duration = await getVideoDuration(inputPath);
+      final duration = await getVideoDuration(inputPath, cancelSignal: cancelSignal);
 
       onProgress(0.05, 'Generating color palette...');
-      await _generatePalette(inputPath, settings, palettePath);
+      await _generatePalette(inputPath, settings, palettePath, cancelSignal: cancelSignal);
 
       onProgress(0.1, 'Creating GIF...');
       await _createGif(
@@ -196,6 +224,7 @@ class FfmpegService {
         settings,
         duration,
         (p, s) => onProgress(0.1 + p * 0.8, s),
+        cancelSignal: cancelSignal,
       );
 
       if (settings.enableLossyCompression) {
@@ -204,6 +233,7 @@ class FfmpegService {
           outputPath,
           settings,
           (p, s) => onProgress(0.9 + p * 0.1, s),
+          cancelSignal: cancelSignal,
         );
       }
 

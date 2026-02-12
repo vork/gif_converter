@@ -57,15 +57,23 @@ class _DropZoneState extends State<DropZone> {
   }
 
   Future<void> _pickFiles() async {
+    // Defer so the window is ready and native dialog can appear on top (desktop).
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    if (!mounted) return;
+    final isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: _videoExtensions,
+      type: isDesktop ? FileType.any : FileType.custom,
+      allowedExtensions: isDesktop ? null : _videoExtensions,
       allowMultiple: true,
+      dialogTitle: 'Select video files',
+      lockParentWindow: true,
     );
+    if (!mounted) return;
     if (result != null) {
       final paths = result.files
           .where((f) => f.path != null)
           .map((f) => f.path!)
+          .where(_isVideoFile)
           .toList();
       if (paths.isNotEmpty) {
         widget.onFilesDropped(_expandPathsToVideos(paths));
@@ -74,9 +82,13 @@ class _DropZoneState extends State<DropZone> {
   }
 
   Future<void> _pickFolder() async {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (!mounted) return;
     final dirPath = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Select folder with videos',
+      lockParentWindow: true,
     );
+    if (!mounted) return;
     if (dirPath != null) {
       final videos = _collectVideosFromDirectory(dirPath);
       if (videos.isNotEmpty) {
@@ -95,62 +107,67 @@ class _DropZoneState extends State<DropZone> {
         ? theme.colorScheme.primary.withValues(alpha: 0.08)
         : theme.colorScheme.surfaceContainerLow;
 
-    return DropTarget(
-      onDragEntered: (_) => setState(() => _isDragging = true),
-      onDragExited: (_) => setState(() => _isDragging = false),
-      onDragDone: (details) {
-        setState(() => _isDragging = false);
-        final paths = details.files.map((f) => f.path).toList();
-        final videos = _expandPathsToVideos(paths);
-        if (videos.isNotEmpty) {
-          widget.onFilesDropped(videos);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 180,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: borderColor, width: 2),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.video_file_outlined,
-                size: 48,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Drop video files or a folder here',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropTarget(
+          onDragEntered: (_) => setState(() => _isDragging = true),
+          onDragExited: (_) => setState(() => _isDragging = false),
+          onDragDone: (details) {
+            setState(() => _isDragging = false);
+            final paths = details.files.map((f) => f.path).toList();
+            final videos = _expandPathsToVideos(paths);
+            if (videos.isNotEmpty) {
+              widget.onFilesDropped(videos);
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 160,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor, width: 2),
+            ),
+            child: Center(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextButton.icon(
-                    onPressed: _pickFiles,
-                    icon: const Icon(Icons.folder_open, size: 18),
-                    label: const Text('Browse Files'),
+                  Icon(
+                    Icons.video_file_outlined,
+                    size: 48,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: _pickFolder,
-                    icon: const Icon(Icons.folder, size: 18),
-                    label: const Text('Add Folder'),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Drop video files or a folder here',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              onPressed: _pickFiles,
+              icon: const Icon(Icons.folder_open, size: 18),
+              label: const Text('Browse Files'),
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: _pickFolder,
+              icon: const Icon(Icons.folder, size: 18),
+              label: const Text('Add Folder'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
