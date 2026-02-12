@@ -35,7 +35,7 @@ Pre-built binaries are produced by GitHub Actions on every relevant push (and ca
 
 - **Video → GIF**: Convert video files to GIF with configurable width, FPS, and palette options.
 - **GIF optimization**: Shrink existing GIFs with gifsicle (optional lossy compression).
-- **Drag & drop**: Add files by dropping them on the window or via file picker.
+- **Drag & drop**: Add files by dropping them on the window or via file picker. Drop a **folder** (or use **Add Folder**) to bulk-add all videos in that folder and its subfolders.
 - **Preview**: Preview a selected file before converting.
 - **Settings**: Adjust width, FPS, loop, dither mode, local color tables, and lossy level.
 - **Bundled tools**: ffmpeg and gifsicle are included; no separate install needed.
