@@ -36,40 +36,27 @@ jobs:
           echo "${FFMPEG_TARBALL_SHA256}  ffmpeg.tar.xz" | shasum -a 256 -c -
           tar xf ffmpeg.tar.xz
 
-      - name: Build ffmpeg (LGPL, static, minimal)
+      # ── ffmpeg configure flags (LGPL, static) ──────────────────
+      # Strategy: only restrict OUTPUTS (encoders + muxers).
+      # Keep all decoders, demuxers, parsers, and filters so any
+      # input video format works. Disable network, devices, and
+      # hwaccels to stay small.
+      - name: Build ffmpeg (LGPL, static)
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
           ./configure \
             --prefix="$(pwd)/../ffmpeg-install" \
             --disable-doc --disable-htmlpages --disable-manpages \
             --disable-podpages --disable-txtpages \
-            --disable-network --disable-autodetect \
+            --disable-network \
             --disable-programs --enable-ffmpeg \
             --enable-static --disable-shared \
             --disable-debug --enable-small \
-            --disable-encoders --enable-encoder=gif --enable-encoder=png \
-            --disable-decoders \
-            --enable-decoder=h264 --enable-decoder=hevc \
-            --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=av1 \
-            --enable-decoder=mpeg4 --enable-decoder=mpeg2video \
-            --enable-decoder=mjpeg --enable-decoder=gif --enable-decoder=png \
-            --enable-decoder=rawvideo --enable-decoder=webp \
-            --enable-decoder=prores --enable-decoder=dnxhd \
-            --enable-decoder=aac --enable-decoder=mp3 \
-            --disable-muxers --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
-            --disable-demuxers \
-            --enable-demuxer=mov --enable-demuxer=matroska --enable-demuxer=avi \
-            --enable-demuxer=gif --enable-demuxer=image2 \
-            --enable-demuxer=mpegts --enable-demuxer=mpegvideo \
-            --enable-demuxer=concat --enable-demuxer=webm_dash_manifest \
-            --disable-filters \
-            --enable-filter=fps --enable-filter=scale \
-            --enable-filter=palettegen --enable-filter=paletteuse \
-            --enable-filter=split --enable-filter=null --enable-filter=format \
-            --enable-filter=setpts --enable-filter=trim --enable-filter=select \
-            --enable-filter=color --enable-filter=overlay --enable-filter=concat \
-            --disable-protocols --enable-protocol=file --enable-protocol=pipe \
-            --disable-bsfs --disable-devices --disable-hwaccels \
+            --disable-encoders \
+            --enable-encoder=gif --enable-encoder=png --enable-encoder=rawvideo \
+            --disable-muxers \
+            --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
+            --disable-devices --disable-hwaccels \
             --extra-cflags="-O2"
           make -j$(sysctl -n hw.ncpu)
           make install
@@ -125,13 +112,16 @@ jobs:
       - name: Package macOS app
         run: |
           cd build/macos/Build/Products/Release
+          # Find the .app (name may vary)
+          APP_NAME=$(ls -d *.app | head -1)
+          echo "Found app: $APP_NAME"
           # Verify binaries made it into the bundle
-          ls -la GifDrop.app/Contents/Resources/ffmpeg \
-                 GifDrop.app/Contents/Resources/gifsicle
-          GifDrop.app/Contents/Resources/ffmpeg -version 2>&1 | head -1
-          GifDrop.app/Contents/Resources/gifsicle --version 2>&1 | head -1
+          ls -la "$APP_NAME/Contents/Resources/ffmpeg" \
+                 "$APP_NAME/Contents/Resources/gifsicle"
+          "$APP_NAME/Contents/Resources/ffmpeg" -version 2>&1 | head -1
+          "$APP_NAME/Contents/Resources/gifsicle" --version 2>&1 | head -1
           # Create distributable zip
-          ditto -c -k --sequesterRsrc --keepParent GifDrop.app \
+          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" \
                 GifDrop-macos-arm64.zip
 
       - uses: actions/upload-artifact@v4
@@ -162,41 +152,23 @@ jobs:
           echo "${FFMPEG_TARBALL_SHA256}  ffmpeg.tar.xz" | sha256sum -c -
           tar xf ffmpeg.tar.xz
 
-      - name: Build ffmpeg (LGPL, static, minimal)
+      - name: Build ffmpeg (LGPL, static)
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
           ./configure \
             --prefix="$(pwd)/../ffmpeg-install" \
             --disable-doc --disable-htmlpages --disable-manpages \
             --disable-podpages --disable-txtpages \
-            --disable-network --disable-autodetect \
+            --disable-network \
             --disable-programs --enable-ffmpeg \
             --enable-static --disable-shared \
             --disable-debug --enable-small \
             --extra-ldflags="-static" --pkg-config-flags="--static" \
-            --disable-encoders --enable-encoder=gif --enable-encoder=png \
-            --disable-decoders \
-            --enable-decoder=h264 --enable-decoder=hevc \
-            --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=av1 \
-            --enable-decoder=mpeg4 --enable-decoder=mpeg2video \
-            --enable-decoder=mjpeg --enable-decoder=gif --enable-decoder=png \
-            --enable-decoder=rawvideo --enable-decoder=webp \
-            --enable-decoder=prores --enable-decoder=dnxhd \
-            --enable-decoder=aac --enable-decoder=mp3 \
-            --disable-muxers --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
-            --disable-demuxers \
-            --enable-demuxer=mov --enable-demuxer=matroska --enable-demuxer=avi \
-            --enable-demuxer=gif --enable-demuxer=image2 \
-            --enable-demuxer=mpegts --enable-demuxer=mpegvideo \
-            --enable-demuxer=concat --enable-demuxer=webm_dash_manifest \
-            --disable-filters \
-            --enable-filter=fps --enable-filter=scale \
-            --enable-filter=palettegen --enable-filter=paletteuse \
-            --enable-filter=split --enable-filter=null --enable-filter=format \
-            --enable-filter=setpts --enable-filter=trim --enable-filter=select \
-            --enable-filter=color --enable-filter=overlay --enable-filter=concat \
-            --disable-protocols --enable-protocol=file --enable-protocol=pipe \
-            --disable-bsfs --disable-devices --disable-hwaccels \
+            --disable-encoders \
+            --enable-encoder=gif --enable-encoder=png --enable-encoder=rawvideo \
+            --disable-muxers \
+            --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
+            --disable-devices --disable-hwaccels \
             --extra-cflags="-O2"
           make -j$(nproc)
           make install
@@ -291,7 +263,7 @@ jobs:
           echo "${FFMPEG_TARBALL_SHA256}  ffmpeg.tar.xz" | sha256sum -c -
           tar xf ffmpeg.tar.xz
 
-      - name: Build ffmpeg (LGPL, static, minimal)
+      - name: Build ffmpeg (LGPL, static)
         shell: msys2 {0}
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
@@ -300,34 +272,16 @@ jobs:
             --target-os=mingw32 \
             --disable-doc --disable-htmlpages --disable-manpages \
             --disable-podpages --disable-txtpages \
-            --disable-network --disable-autodetect \
+            --disable-network \
             --disable-programs --enable-ffmpeg \
             --enable-static --disable-shared \
             --disable-debug --enable-small \
             --extra-ldflags="-static" --pkg-config-flags="--static" \
-            --disable-encoders --enable-encoder=gif --enable-encoder=png \
-            --disable-decoders \
-            --enable-decoder=h264 --enable-decoder=hevc \
-            --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=av1 \
-            --enable-decoder=mpeg4 --enable-decoder=mpeg2video \
-            --enable-decoder=mjpeg --enable-decoder=gif --enable-decoder=png \
-            --enable-decoder=rawvideo --enable-decoder=webp \
-            --enable-decoder=prores --enable-decoder=dnxhd \
-            --enable-decoder=aac --enable-decoder=mp3 \
-            --disable-muxers --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
-            --disable-demuxers \
-            --enable-demuxer=mov --enable-demuxer=matroska --enable-demuxer=avi \
-            --enable-demuxer=gif --enable-demuxer=image2 \
-            --enable-demuxer=mpegts --enable-demuxer=mpegvideo \
-            --enable-demuxer=concat --enable-demuxer=webm_dash_manifest \
-            --disable-filters \
-            --enable-filter=fps --enable-filter=scale \
-            --enable-filter=palettegen --enable-filter=paletteuse \
-            --enable-filter=split --enable-filter=null --enable-filter=format \
-            --enable-filter=setpts --enable-filter=trim --enable-filter=select \
-            --enable-filter=color --enable-filter=overlay --enable-filter=concat \
-            --disable-protocols --enable-protocol=file --enable-protocol=pipe \
-            --disable-bsfs --disable-devices --disable-hwaccels \
+            --disable-encoders \
+            --enable-encoder=gif --enable-encoder=png --enable-encoder=rawvideo \
+            --disable-muxers \
+            --enable-muxer=gif --enable-muxer=image2 --enable-muxer=null \
+            --disable-devices --disable-hwaccels \
             --extra-cflags="-O2"
           make -j$(nproc)
           make install

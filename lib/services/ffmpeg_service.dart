@@ -19,10 +19,37 @@ class FfmpegService {
     return _gifsicklePath!;
   }
 
+  /// Run a process, drain stderr, and return (exitCode, stderrText).
+  /// Always drain stderr *before* awaiting exitCode to avoid deadlocks.
+  Future<(int, String)> _runProcess(
+    String executable,
+    List<String> args, {
+    void Function(String chunk)? onStderr,
+  }) async {
+    final process = await Process.start(executable, args);
+
+    // Drain stdout (discard) so the pipe doesn't block.
+    process.stdout.drain<void>();
+
+    // Collect stderr and optionally forward chunks to caller.
+    final stderrBuf = StringBuffer();
+    final stderrDone = process.stderr
+        .transform(utf8.decoder)
+        .listen((chunk) {
+          stderrBuf.write(chunk);
+          onStderr?.call(chunk);
+        })
+        .asFuture<void>();
+
+    // Wait for stderr to fully drain, then await exit.
+    await stderrDone;
+    final exitCode = await process.exitCode;
+    return (exitCode, stderrBuf.toString());
+  }
+
   Future<double> getVideoDuration(String inputPath) async {
     final ffmpeg = await ffmpegPath;
-    final result = await Process.run(ffmpeg, ['-i', inputPath], stderrEncoding: utf8);
-    final stderr = result.stderr as String;
+    final (_, stderr) = await _runProcess(ffmpeg, ['-i', inputPath]);
 
     final regex = RegExp(r'Duration:\s+(\d+):(\d+):(\d+)\.(\d+)');
     final match = regex.firstMatch(stderr);
@@ -56,11 +83,9 @@ class FfmpegService {
       '-y', palettePath,
     ];
 
-    final process = await Process.start(ffmpeg, args);
-    final exitCode = await process.exitCode;
+    final (exitCode, stderr) = await _runProcess(ffmpeg, args);
     if (exitCode != 0) {
-      final stderr = await process.stderr.transform(utf8.decoder).join();
-      throw Exception('Palette generation failed (exit $exitCode): $stderr');
+      throw Exception('Palette generation failed (exit $exitCode):\n$stderr');
     }
     return palettePath;
   }
@@ -100,11 +125,10 @@ class FfmpegService {
       '-y', outputPath,
     ];
 
-    final process = await Process.start(ffmpeg, args);
-
     final timeRegex = RegExp(r'time=(\d+):(\d+):(\d+)\.(\d+)');
-    process.stderr.transform(utf8.decoder).listen((data) {
-      final match = timeRegex.firstMatch(data);
+    final (exitCode, stderr) = await _runProcess(ffmpeg, args,
+        onStderr: (chunk) {
+      final match = timeRegex.firstMatch(chunk);
       if (match != null && totalDuration > 0) {
         final current = int.parse(match.group(1)!) * 3600.0 +
             int.parse(match.group(2)!) * 60.0 +
@@ -115,9 +139,8 @@ class FfmpegService {
       }
     });
 
-    final exitCode = await process.exitCode;
     if (exitCode != 0) {
-      throw Exception('GIF creation failed (exit $exitCode)');
+      throw Exception('GIF creation failed (exit $exitCode):\n$stderr');
     }
   }
 
@@ -137,11 +160,9 @@ class FfmpegService {
       gifPath,
     ];
 
-    final process = await Process.start(gifsicle, args);
-    final exitCode = await process.exitCode;
+    final (exitCode, stderr) = await _runProcess(gifsicle, args);
     if (exitCode != 0) {
-      final stderr = await process.stderr.transform(utf8.decoder).join();
-      throw Exception('Gifsicle optimization failed (exit $exitCode): $stderr');
+      throw Exception('Gifsicle optimization failed (exit $exitCode):\n$stderr');
     }
 
     onProgress(1.0, 'Optimization complete');
