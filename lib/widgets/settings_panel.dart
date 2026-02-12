@@ -142,7 +142,7 @@ class SettingsPanel extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: settings.ditherMode,
+                initialValue: settings.ditherMode,
                 decoration: const InputDecoration(
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(
