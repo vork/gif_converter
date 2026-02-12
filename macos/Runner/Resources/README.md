@@ -7,8 +7,7 @@ anything.
 ## Preferred: download from CI
 
 The GitHub Actions workflow (`.github/workflows/build-binaries.yml`) builds both
-tools from pinned source. Download the `binaries-macos-arm64` or
-`binaries-macos-x86_64` artifact and copy `ffmpeg` and `gifsicle` here.
+tools from pinned source. Download the `binaries-macos-arm64` artifact and copy `ffmpeg` and `gifsicle` here.
 
 Verify with:
 

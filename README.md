@@ -2,7 +2,7 @@
 
 **GifDrop** is a desktop app that converts video to GIF and optimizes existing GIFs. Drag and drop your files, tweak quality and size, and export—no command line required. It bundles **ffmpeg** (video→GIF) and **gifsicle** (GIF optimization) so you don’t need to install anything else.
 
-Built with Flutter for **macOS** (Apple Silicon & Intel), **Linux**, and **Windows**.
+Built with Flutter for **macOS** (Apple Silicon), **Linux**, and **Windows**.
 
 ---
 
@@ -19,7 +19,6 @@ Pre-built binaries are produced by GitHub Actions on every relevant push (and ca
    | Platform | Artifact name | What you get |
    |----------|----------------|--------------|
    | **macOS (Apple Silicon)** | `app-macos-arm64` | `GifDrop-macos-arm64.zip` → contains `GifDrop.app` |
-   | **macOS (Intel)** | `app-macos-x86_64` | `GifDrop-macos-x86_64.zip` → contains `GifDrop.app` |
    | **Linux (x86_64)** | `app-linux-x86_64` | `GifDrop-linux-x86_64.tar.gz` → extract and run the bundle |
    | **Windows (x86_64)** | `app-windows-x86_64` | `GifDrop-windows-x86_64.zip` → extract and run `gif_converter.exe` |
 
@@ -89,4 +88,6 @@ Details, checksums, and fallback download options: [BINARIES.md](BINARIES.md).
 
 ## License
 
-This project is not published to pub.dev (`publish_to: 'none'`). For license terms of the app itself, see the repository license; ffmpeg and gifsicle are under their respective licenses (LGPL and GPL).
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for the full text.
+
+The app is not published to pub.dev (`publish_to: 'none'`). Bundled tools use their own licenses: **ffmpeg** (LGPL), **gifsicle** (GPL 2).

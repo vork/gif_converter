@@ -82,7 +82,6 @@ For each platform:
 | Runner             | Arch            | Binary artifact             | App artifact |
 |--------------------|-----------------|-----------------------------|-------------|
 | `macos-14`         | arm64 (Apple Silicon) | `binaries-macos-arm64` | `app-macos-arm64` (.zip containing .app) |
-| `macos-13`         | x86_64 (Intel)  | `binaries-macos-x86_64`     | `app-macos-x86_64` (.zip containing .app) |
 | `ubuntu-22.04`     | x86_64          | `binaries-linux-x86_64`     | `app-linux-x86_64` (.tar.gz bundle) |
 | `windows-latest`   | x86_64          | `binaries-windows-x86_64`   | `app-windows-x86_64` (.zip) |
 

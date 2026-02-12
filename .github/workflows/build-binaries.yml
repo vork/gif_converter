@@ -19,21 +19,14 @@ env:
   FFMPEG_TARBALL_SHA256: "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1"
   GIFSICLE_VERSION: "1.96"
   GIFSICLE_TAG: "v1.96"
-  FLUTTER_VERSION: "3.32.0"
+  FLUTTER_VERSION: "3.41.0"
 
 jobs:
   # ════════════════════════════════════════════════════════════════════
-  # macOS  (arm64 on macos-14, x86_64 on macos-13)
+  # macOS (Apple Silicon only)
   # ════════════════════════════════════════════════════════════════════
   build-macos:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-14
-            arch: arm64
-          - runner: macos-13
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -115,7 +108,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries-macos-${{ matrix.arch }}
+          name: binaries-macos-arm64
           path: binary-out/
 
       # ── Flutter app build ────────────────────────────────────────
@@ -144,12 +137,12 @@ jobs:
           GifDrop.app/Contents/Resources/gifsicle --version 2>&1 | head -1
           # Create distributable zip
           ditto -c -k --sequesterRsrc --keepParent GifDrop.app \
-                GifDrop-macos-${{ matrix.arch }}.zip
+                GifDrop-macos-arm64.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: app-macos-${{ matrix.arch }}
-          path: build/macos/Build/Products/Release/GifDrop-macos-${{ matrix.arch }}.zip
+          name: app-macos-arm64
+          path: build/macos/Build/Products/Release/GifDrop-macos-arm64.zip
 
   # ════════════════════════════════════════════════════════════════════
   # Linux x86_64
