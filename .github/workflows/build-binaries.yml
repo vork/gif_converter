@@ -25,12 +25,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # https://github.com/actions/cache | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
+      - name: Restore ffmpeg/gifsicle build cache
+        uses: actions/cache@v4
+        id: restore-build
+        with:
+          key: ffmpeg-gifsicle-macos-${{ env.FFMPEG_VERSION }}-${{ env.GIFSICLE_VERSION }}
+          path: build-cache
+
+      - name: Use restored binaries
+        if: steps.restore-build.outputs.cache-hit == 'true'
+        run: |
+          cp -R build-cache/ffmpeg-install build-cache/gifsicle .
+
       # ── System deps ──────────────────────────────────────────────
       - name: Install build dependencies
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: brew install nasm automake autoconf libtool pkg-config
 
       # ── ffmpeg from source ───────────────────────────────────────
       - name: Download & verify ffmpeg source
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           curl -L -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
           echo "${FFMPEG_TARBALL_SHA256}  ffmpeg.tar.xz" | shasum -a 256 -c -
@@ -42,6 +57,7 @@ jobs:
       # input video format works. Disable network, devices, and
       # hwaccels to stay small.
       - name: Build ffmpeg (LGPL, static)
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
           ./configure \
@@ -68,6 +84,7 @@ jobs:
 
       # ── gifsicle from source ─────────────────────────────────────
       - name: Clone & build gifsicle
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "${GIFSICLE_TAG}" https://github.com/kohler/gifsicle.git
           cd gifsicle
@@ -75,6 +92,12 @@ jobs:
           ./configure --disable-gifview
           make -j$(sysctl -n hw.ncpu)
           ./src/gifsicle --version
+
+      - name: Prepare build cache
+        if: steps.restore-build.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build-cache
+          cp -R ffmpeg-install gifsicle build-cache/
 
       # ── Binary checksums ─────────────────────────────────────────
       - name: Compute binary checksums
@@ -137,8 +160,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # https://github.com/actions/cache | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
+      - name: Restore ffmpeg/gifsicle build cache
+        uses: actions/cache@v4
+        id: restore-build
+        with:
+          key: ffmpeg-gifsicle-linux-${{ env.FFMPEG_VERSION }}-${{ env.GIFSICLE_VERSION }}
+          path: build-cache
+
+      - name: Use restored binaries
+        if: steps.restore-build.outputs.cache-hit == 'true'
+        run: cp -R build-cache/ffmpeg-install build-cache/gifsicle .
+
       # ── System deps ──────────────────────────────────────────────
       - name: Install build dependencies
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y nasm yasm build-essential autoconf automake \
@@ -147,12 +183,14 @@ jobs:
 
       # ── ffmpeg from source ───────────────────────────────────────
       - name: Download & verify ffmpeg source
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           curl -L -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
           echo "${FFMPEG_TARBALL_SHA256}  ffmpeg.tar.xz" | sha256sum -c -
           tar xf ffmpeg.tar.xz
 
       - name: Build ffmpeg (LGPL, static)
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
           ./configure \
@@ -181,6 +219,7 @@ jobs:
 
       # ── gifsicle from source ─────────────────────────────────────
       - name: Clone & build gifsicle
+        if: steps.restore-build.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "${GIFSICLE_TAG}" https://github.com/kohler/gifsicle.git
           cd gifsicle
@@ -188,6 +227,12 @@ jobs:
           ./configure --disable-gifview LDFLAGS="-static"
           make -j$(nproc)
           ./src/gifsicle --version
+
+      - name: Prepare build cache
+        if: steps.restore-build.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build-cache
+          cp -R ffmpeg-install gifsicle build-cache/
 
       # ── Binary checksums ─────────────────────────────────────────
       - name: Compute binary checksums
@@ -244,6 +289,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # https://github.com/actions/cache | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
+      - name: Restore ffmpeg/gifsicle build cache
+        uses: actions/cache@v4
+        id: restore-build
+        with:
+          key: ffmpeg-gifsicle-windows-${{ env.FFMPEG_VERSION }}-${{ env.GIFSICLE_VERSION }}
+          path: build-cache
+
       # ── Build ffmpeg + gifsicle in MSYS2 ─────────────────────────
       - uses: msys2/setup-msys2@v2
         with:
@@ -256,7 +309,13 @@ jobs:
             autoconf automake libtool make pkg-config
             tar git diffutils
 
+      - name: Use restored binaries
+        if: steps.restore-build.outputs.cache-hit == 'true'
+        shell: msys2 {0}
+        run: cp -r build-cache/ffmpeg-install build-cache/gifsicle .
+
       - name: Download & verify ffmpeg source
+        if: steps.restore-build.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
           curl -L -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
@@ -264,6 +323,7 @@ jobs:
           tar xf ffmpeg.tar.xz
 
       - name: Build ffmpeg (LGPL, static)
+        if: steps.restore-build.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
           cd ffmpeg-${FFMPEG_VERSION}
@@ -291,6 +351,7 @@ jobs:
         run: ./ffmpeg-install/bin/ffmpeg.exe -version
 
       - name: Clone & build gifsicle
+        if: steps.restore-build.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
           git clone --depth 1 --branch "${GIFSICLE_TAG}" https://github.com/kohler/gifsicle.git
@@ -299,6 +360,11 @@ jobs:
           ./configure --disable-gifview
           make -j$(nproc)
           ./src/gifsicle.exe --version
+
+      - name: Prepare build cache
+        if: steps.restore-build.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: mkdir -p build-cache && cp -r ffmpeg-install gifsicle build-cache/
 
       - name: Compute binary checksums
         shell: msys2 {0}
